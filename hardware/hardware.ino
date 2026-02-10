@@ -9,7 +9,9 @@
 #include <ctype.h>
 
 // ADD YOUR IMPORTS HERE
-
+#include <PubSubClient.h>
+#include <FastLED.h>
+#include "DHT.h"
 
 
 #ifndef _WIFI_H 
@@ -36,21 +38,24 @@
 
 // DEFINE VARIABLES
 #define ARDUINOJSON_USE_DOUBLE      1 
+#define NUM_LEDS 7
 
 // DEFINE THE CONTROL PINS FOR THE DHT22 
+#define DATA_PIN 22 // Need to change later
+#define DHTPIN 27
+#define DHTTYPE DHT22
 
 
-
-
-// MQTT CLIENT CONFIG  
-static const char* pubtopic      = "620012345";                    // Add your ID number here
-static const char* subtopic[]    = {"620012345_sub","/elet2415"};  // Array of Topics(Strings) to subscribe to
-static const char* mqtt_server   = "local";         // Broker IP address or Domain name as a String 
+// MQTT CLIENT CONFIG
+// Keep these topics aligned with the frontend Control page + backend MQTT subscriber.
+static const char* pubtopic      = "620171008";                     // Device topic (sensor updates)
+static const char* subtopic[]    = {"620171008_sub","/elet2415"};   // Control topic + course topic
+static const char* mqtt_server   = "www.yanacreations.com";         // Broker IP address or Domain name as a String 
 static uint16_t mqtt_port        = 1883;
 
 // WIFI CREDENTIALS
-const char* ssid       = "YOUR_SSID";     // Add your Wi-Fi ssid
-const char* password   = "YOUR_PASSWORD"; // Add your Wi-Fi password 
+const char* ssid       = "138SL-Residents.";     // Add your Wi-Fi ssid
+const char* password   = "resident2020@138sl"; // Add your Wi-Fi password 
 
 
 
@@ -81,7 +86,7 @@ double calcHeatIndex(double Temp, double Humid);
 
 
 /* Init class Instances for the DHT22 etcc */
- 
+DHT dht(DHTPIN, DHTTYPE);
   
 
 //############### IMPORT HEADER FILES ##################
@@ -94,13 +99,15 @@ double calcHeatIndex(double Temp, double Humid);
 #endif
 
 // Temporary Variables 
-
+CRGB ledArray[NUM_LEDS];
 
 void setup() {
   Serial.begin(115200);  // INIT SERIAL  
 
   // INITIALIZE ALL SENSORS AND DEVICES
-  
+  FastLED.addLeds<NEOPIXEL, DATA_PIN>(ledArray, NUM_LEDS);  
+  dht.begin();
+
   /* Add all other necessary sensor Initializations and Configurations here */
 
 
@@ -142,25 +149,34 @@ void vUpdate( void * pvParameters )  {
           // #######################################################
    
           // 1. Read Humidity and save in variable below
-          double h = 0;
+          double h = dht.readHumidity();
            
           // 2. Read temperature as Celsius   and save in variable below
-          double t = 0;    
+          double t = dht.readTemperature();    
  
 
           if(isNumber(t)){
               // ##Publish update according to ‘{"id": "student_id", "timestamp": 1702212234, "temperature": 30, "humidity":90, "heatindex": 30}’
 
               // 1. Create JSon object
-              
+              JsonDocument doc;
               // 2. Create message buffer/array to store serialized JSON object
-              
+              char message[1100]  = {0};
+
               // 3. Add key:value pairs to JSon object based on above schema
-
+              doc["id"]         = "620171008";
+              doc["timestamp"]  = getTimeStamp();
+              doc["temperature"]     = t;
+              doc["humidity"]       = h;
+              doc["heatindex"]       = convert_fahrenheit_to_Celsius(calcHeatIndex(convert_Celsius_to_fahrenheit(t), h));
+              
               // 4. Seralize / Covert JSon object to JSon string and store in message array
-               
-              // 5. Publish message to a topic sobscribed to by both backend and frontend                
+              serializeJson(doc, message); 
 
+              // 5. Publish message to a topic subscribed to by both backend and frontend                
+              if(mqtt.connected() ){
+                publish(pubtopic, message);
+              }
           }
 
           
@@ -210,11 +226,29 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
   if (strcmp(type, "controls") == 0){
     // 1. EXTRACT ALL PARAMETERS: NODES, RED,GREEN, BLUE, AND BRIGHTNESS FROM JSON OBJECT
+    const int brightness = doc["brightness"];
+    const int leds = doc["leds"];
+    const int red = doc["color"]["r"];
+    const int green = doc["color"]["g"];
+    const int blue = doc["color"]["b"];
+    const int alpha = doc["color"]["a"];
 
     // 2. ITERATIVELY, TURN ON LED(s) BASED ON THE VALUE OF NODES. Ex IF NODES = 2, TURN ON 2 LED(s)
+    for(int x=0; x<leds; x++){
+      ledArray[x] = CRGB( red, green, blue); 
+      FastLED.setBrightness( brightness ); 
+      FastLED.show(); 
+      vTaskDelay(50 / portTICK_PERIOD_MS);
+    }
 
     // 3. ITERATIVELY, TURN OFF ALL REMAINING LED(s).
-   
+    for(int x=leds; x<NUM_LEDS; x++){
+      ledArray[x] = CRGB::Black;
+      FastLED.setBrightness( brightness );
+      FastLED.show();
+      vTaskDelay(50 / portTICK_PERIOD_MS);
+    }
+
   }
 }
 
@@ -239,16 +273,18 @@ bool publish(const char *topic, const char *payload){
 //***** Complete the util functions below ******
 
 double convert_Celsius_to_fahrenheit(double c){    
-    // CONVERTS INPUT FROM °C TO °F. RETURN RESULTS     
+    // CONVERTS INPUT FROM °C TO °F. RETURN RESULTS 
+    return (9/5)*c+32;    
 }
 
 double convert_fahrenheit_to_Celsius(double f){    
-    // CONVERTS INPUT FROM °F TO °C. RETURN RESULT    
+    // CONVERTS INPUT FROM °F TO °C. RETURN RESULT 
+    return (f-32)*5/9;   
 }
 
 double calcHeatIndex(double Temp, double Humid){
     // CALCULATE AND RETURN HEAT INDEX USING EQUATION FOUND AT https://byjus.com/heat-index-formula/#:~:text=The%20heat%20index%20formula%20is,an%20implied%20humidity%20of%2020%25
-  
+    return -42.379 + (2.04901523 * Temp) + (10.14333127 * Humid) - (0.22475541 * Temp * Humid) - (0.00683783 * Temp * Temp) - (0.05481717 * Humid * Humid) + (0.00122874 * Temp * Temp * Humid) + (0.00085282 * Temp * Humid * Humid) - (0.00000199 * Temp * Temp * Humid * Humid);
 }
  
 

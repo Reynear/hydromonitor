@@ -131,6 +131,13 @@ class Ntp {
 void vNTP( void * pvParameters ) {
   configASSERT( ( ( uint32_t ) pvParameters ) == 1 );   
   Ntp NTP = Ntp("NTP PROTOCOL INITIATED"); // Instatiate NTP Class
+
+  // LWIP's tcpip_thread mailbox isn't ready until the WiFi stack is initialized.
+  // If we call configTzTime() too early, lwIP can assert with "tcpip_callback ... (Invalid mbox)".
+  while (WiFi.status() != WL_CONNECTED) {
+      vTaskDelay(250 / portTICK_PERIOD_MS);
+  }
+
   NTP.setup(); // Config NTP
  
  for( ;; ) {  
@@ -151,9 +158,9 @@ void vNTPFunction( void ) {
     xReturned = xTaskCreatePinnedToCore(
                     vNTP,               // Function that implements the task. 
                     "NTP Protocol",     // Text name for the task. 
-                    1500,               // Stack size (Bytes in ESP32, words in Vanilla FreeRTOS) 
+                    4096,               // Stack depth (StackType_t words in ESP-IDF/Arduino-ESP32) 
                     ( void * ) 1,       // Parameter passed into the task. 
-                    12,                  // Priority at which the task is created. 
+                    8,                  // Priority at which the task is created. 
                     &xNTPHandle,        // Used to pass out the created task's handle. 
                     1);                 // ESP Core to run task on. 
 
