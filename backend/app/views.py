@@ -30,7 +30,13 @@ def get_all(start,end):
     '''RETURNS ALL THE DATA FROM THE DATABASE THAT EXIST IN BETWEEN THE START AND END TIMESTAMPS'''
    
     if request.method == "GET":
-        '''Add your code here to complete this route'''
+        try:
+            start = int(start)
+            end = int(end)
+            result = mongo.getAllInRange(start, end)
+            return jsonify(result)
+        except Exception:
+            return jsonify([])
 
     # FILE DATA NOT EXIST
     return jsonify({"status":"not found","data":[]})
@@ -42,7 +48,13 @@ def get_temperature_mmar(start,end):
     '''RETURNS MIN, MAX, AVG AND RANGE FOR TEMPERATURE. THAT FALLS WITHIN THE START AND END DATE RANGE'''
    
     if request.method == "GET": 
-        '''Add your code here to complete this route'''
+        try:
+            start = int(start)
+            end = int(end)
+            result = mongo.temperatureMMAR(start, end)
+            return jsonify(result)
+        except Exception:
+            return jsonify([])
 
     # FILE DATA NOT EXIST
     return jsonify({"status":"not found","data":[]})
@@ -56,7 +68,13 @@ def get_humidity_mmar(start,end):
     '''RETURNS MIN, MAX, AVG AND RANGE FOR HUMIDITY. THAT FALLS WITHIN THE START AND END DATE RANGE'''
    
     if request.method == "GET": 
-        '''Add your code here to complete this route'''
+        try:
+            start = int(start)
+            end = int(end)
+            result = mongo.humidityMMAR(start, end)
+            return jsonify(result)
+        except Exception:
+            return jsonify([])
 
     # FILE DATA NOT EXIST
     return jsonify({"status":"not found","data":[]})
@@ -70,7 +88,15 @@ def get_freq_distro(variable,start,end):
     '''RETURNS FREQUENCY DISTRIBUTION FOR SPECIFIED VARIABLE'''
    
     if request.method == "GET": 
-        '''Add your code here to complete this route'''         
+        try:
+            if variable not in ["temperature", "humidity", "heatindex"]:
+                return jsonify([])
+            start = int(start)
+            end = int(end)
+            result = mongo.frequencyDistro(variable, start, end)
+            return jsonify(result)
+        except Exception:
+            return jsonify([])
 
     # FILE DATA NOT EXIST
     return jsonify({"status":"not found","data":[]})
@@ -128,6 +154,5 @@ def add_header(response):
 def page_not_found(error):
     """Custom 404 page."""    
     return jsonify({"status": 404}), 404
-
 
 
